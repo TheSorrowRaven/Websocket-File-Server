@@ -34,13 +34,17 @@ public class WebsocketServer
     public readonly IPAddress ipAddress;
     public readonly int port;
 
-    public readonly TcpListener server;
+    public bool Running { get; private set; }
+
+    public TcpListener server;
     public bool ignoreEmptyReplies;
 
     private readonly ManualResetEvent tcpClientConnected = new ManualResetEvent(false);
 
     private readonly Dictionary<TcpClient, Client> connections = new Dictionary<TcpClient, Client>();
     public int Connections => connections.Count;
+
+    private readonly Queue<Thread> runningThreads = new Queue<Thread>();
 
     private Action<TcpClient, string> onDataReceived;
     /// <summary>
@@ -94,15 +98,30 @@ public class WebsocketServer
         this.OnDataReceived = OnDataReceived;
         this.OnConnect = OnConnect;
 
-        server = new TcpListener(this.ipAddress, this.port);
-        server.Start();
+    }
 
+    public void Start()
+    {
+        server = new TcpListener(ipAddress, port);
+        server.Start();
         StartListeningForConnections();
+        Running = true;
+    }
+    public void Stop()
+    {
+        while (runningThreads.Count != 0)
+        {
+            Thread thread = runningThreads.Dequeue();
+            thread.Abort();
+        }
+
+        server.Stop();
+        Running = false;
     }
 
     //public static void Main()
     //{
-    //    new WebsocketServer("127.0.0.1", 9090, (client, text) =>
+    //    WebsocketServer server = new WebsocketServer("127.0.0.1", 9090, (client, text) =>
     //    {
     //        Console.WriteLine($"Received: {text}");
     //    },
@@ -111,12 +130,15 @@ public class WebsocketServer
     //        Console.WriteLine("Client Connected");
     //    }
     //    );
+    //    server.Start();
     //}
+
 
     private void StartListeningForConnections()
     {
         Thread thread = new Thread(WaitForConnection);
         thread.Start();
+        runningThreads.Enqueue(thread);
     }
 
     private void WaitForConnection()
@@ -275,6 +297,10 @@ public class WebsocketServer
     /// <param name="text">Text to send</param>
     public void SendToClient(TcpClient client, string text)
     {
+        if (!Running)
+        {
+            throw new Exception("Websocket is not running");
+        }
         byte[] bytesSend = EncodeTextForSending(text);
         connections[client].dataToSend.Enqueue(bytesSend);
     }
@@ -284,6 +310,10 @@ public class WebsocketServer
     /// <param name="text">Text to send</param>
     public void SendToAll(string text)
     {
+        if (!Running)
+        {
+            throw new Exception("Websocket is not running");
+        }
         byte[] bytesSend = EncodeTextForSending(text);
         foreach (KeyValuePair<TcpClient, Client> client in connections)
         {
