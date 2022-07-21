@@ -1,0 +1,1 @@
+Don't use this please. There are better solutions in Nuget. This program is very broken. The reason this is not yet deleted is to remind me of my stupidity of not checking for existing packages/solutions before creating my own.
